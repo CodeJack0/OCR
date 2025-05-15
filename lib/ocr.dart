@@ -17,11 +17,13 @@ class _OCRScreenState extends State<OCRScreen> {
   String middleName = '';
   String givenNames = '';
   String dateOfBirth = '';
+  String address = '';
 
   final _lastNameController = TextEditingController();
   final _middleNameController = TextEditingController();
   final _givenNamesController = TextEditingController();
   final _dobController = TextEditingController();
+  final _addressController = TextEditingController();
 
   Future<void> _pickImage() async {
     final pickedFile = await ImagePicker().pickImage(
@@ -38,10 +40,12 @@ class _OCRScreenState extends State<OCRScreen> {
         middleName = '';
         givenNames = '';
         dateOfBirth = '';
+        address = '';
         _lastNameController.clear();
         _middleNameController.clear();
         _givenNamesController.clear();
         _dobController.clear();
+        _addressController.clear();
       });
 
       await _performOCR(processedImage);
@@ -73,18 +77,19 @@ class _OCRScreenState extends State<OCRScreen> {
         args: {"preserve_interword_spaces": "1"},
       );
 
-      _extractName(text);
+      _extractFields(text);
     } catch (e) {
       setState(() {
         lastName = 'OCR error: $e';
         middleName = '';
         givenNames = '';
         dateOfBirth = '';
+        address = '';
       });
     }
   }
 
-  void _extractName(String text) {
+  void _extractFields(String text) {
     final lines =
         text
             .split('\n')
@@ -96,6 +101,7 @@ class _OCRScreenState extends State<OCRScreen> {
     String tempMiddle = '';
     String tempGiven = '';
     String tempDOB = '';
+    String tempAddress = '';
 
     for (int i = 0; i < lines.length; i++) {
       final line = lines[i].toLowerCase();
@@ -133,9 +139,17 @@ class _OCRScreenState extends State<OCRScreen> {
           tempDOB = lines[i + 1];
         }
       }
+
+      if (line.contains('tirahan') || line.contains('address')) {
+        if (i + 1 < lines.length) {
+          tempAddress = lines[i + 1];
+          if (i + 2 < lines.length && lines[i + 2].split(' ').length > 2) {
+            tempAddress += ' ' + lines[i + 2];
+          }
+        }
+      }
     }
 
-    // Fallback: find potential date pattern
     if (tempDOB.isEmpty) {
       for (var line in lines) {
         final match = RegExp(
@@ -151,34 +165,42 @@ class _OCRScreenState extends State<OCRScreen> {
 
     tempMiddle = _filterMiddleName(tempMiddle);
     tempDOB = _correctOCRNoise(tempDOB);
+    tempAddress = _filterAddress(tempAddress);
 
     setState(() {
       lastName = tempLast.trim();
       middleName = tempMiddle.trim().toUpperCase();
       givenNames = tempGiven.trim();
       dateOfBirth = tempDOB.trim();
+      address = tempAddress.trim();
 
       _lastNameController.text = lastName;
       _middleNameController.text = middleName;
       _givenNamesController.text = givenNames;
       _dobController.text = dateOfBirth;
+      _addressController.text = address;
     });
   }
 
   String _filterMiddleName(String middleName) {
     final unwantedTerms = ['petsa ng kapanganakan', 'date of birth'];
-
     for (var term in unwantedTerms) {
       middleName = middleName.replaceAll(
         RegExp(term, caseSensitive: false),
         '',
       );
     }
-
     return middleName;
   }
 
-  // Fix common OCR typos in month names
+  String _filterAddress(String address) {
+    final unwantedTerms = ['date of birth', 'petsa ng kapanganakan'];
+    for (var term in unwantedTerms) {
+      address = address.replaceAll(RegExp(term, caseSensitive: false), '');
+    }
+    return address;
+  }
+
   String _correctOCRNoise(String input) {
     final corrections = {
       'vJ%UARY': 'January',
@@ -209,20 +231,21 @@ class _OCRScreenState extends State<OCRScreen> {
     _middleNameController.dispose();
     _givenNamesController.dispose();
     _dobController.dispose();
+    _addressController.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Extract Name from National ID')),
+      appBar: AppBar(title: const Text('Extract Details from National ID')),
       body: Padding(
         padding: const EdgeInsets.all(16.0),
         child: SingleChildScrollView(
           child: Column(
             children: [
               const Text(
-                'Extracted Name:',
+                'Extracted Information:',
                 style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
               ),
               const SizedBox(height: 16),
@@ -254,6 +277,14 @@ class _OCRScreenState extends State<OCRScreen> {
                 controller: _dobController,
                 decoration: const InputDecoration(
                   labelText: 'Date of Birth',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 10),
+              TextFormField(
+                controller: _addressController,
+                decoration: const InputDecoration(
+                  labelText: 'Address / Tirahan',
                   border: OutlineInputBorder(),
                 ),
               ),
