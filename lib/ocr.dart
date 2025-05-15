@@ -16,10 +16,12 @@ class _OCRScreenState extends State<OCRScreen> {
   String lastName = '';
   String middleName = '';
   String givenNames = '';
+  String dateOfBirth = '';
 
   final _lastNameController = TextEditingController();
   final _middleNameController = TextEditingController();
   final _givenNamesController = TextEditingController();
+  final _dobController = TextEditingController();
 
   Future<void> _pickImage() async {
     final pickedFile = await ImagePicker().pickImage(
@@ -35,9 +37,11 @@ class _OCRScreenState extends State<OCRScreen> {
         lastName = '';
         middleName = '';
         givenNames = '';
+        dateOfBirth = '';
         _lastNameController.clear();
         _middleNameController.clear();
         _givenNamesController.clear();
+        _dobController.clear();
       });
 
       await _performOCR(processedImage);
@@ -75,6 +79,7 @@ class _OCRScreenState extends State<OCRScreen> {
         lastName = 'OCR error: $e';
         middleName = '';
         givenNames = '';
+        dateOfBirth = '';
       });
     }
   }
@@ -90,11 +95,11 @@ class _OCRScreenState extends State<OCRScreen> {
     String tempLast = '';
     String tempMiddle = '';
     String tempGiven = '';
+    String tempDOB = '';
 
     for (int i = 0; i < lines.length; i++) {
       final line = lines[i].toLowerCase();
 
-      // Match Last Name
       if ((line.contains('apelyido') && !line.contains('gitnang')) ||
           line.contains('last name')) {
         if (i + 1 < lines.length) {
@@ -102,53 +107,66 @@ class _OCRScreenState extends State<OCRScreen> {
         }
       }
 
-      // Match Middle Name
       if (line.contains('gitnang') || line.contains('middle name')) {
         if (i + 1 < lines.length) {
           tempMiddle = lines[i + 1];
-          // Check if middle name may span multiple lines
           if (i + 2 < lines.length && lines[i + 2].split(' ').length > 1) {
             tempMiddle += ' ' + lines[i + 2];
           }
         }
       }
 
-      // Match Given Name(s)
       if (line.contains('pangalan') ||
           line.contains('given') ||
           line.contains('mga pangalan')) {
         if (i + 1 < lines.length) {
           tempGiven = lines[i + 1];
-          // Check if given name may span multiple lines
           if (i + 2 < lines.length && lines[i + 2].split(' ').length > 1) {
             tempGiven += ' ' + lines[i + 2];
           }
         }
       }
+
+      if (line.contains('petsa ng kapanganakan') ||
+          line.contains('date of birth')) {
+        if (i + 1 < lines.length) {
+          tempDOB = lines[i + 1];
+        }
+      }
     }
 
-    // Adjusting to remove unwanted terms and keeping only capital letters
+    // Fallback: find potential date pattern
+    if (tempDOB.isEmpty) {
+      for (var line in lines) {
+        final match = RegExp(
+          r'(\d{1,2}[\s\-\/]?[A-Za-z%]{3,9}[\s\-\/]?\d{2,4})',
+          caseSensitive: false,
+        ).firstMatch(line);
+        if (match != null) {
+          tempDOB = match.group(0)!;
+          break;
+        }
+      }
+    }
+
     tempMiddle = _filterMiddleName(tempMiddle);
+    tempDOB = _correctOCRNoise(tempDOB);
 
     setState(() {
       lastName = tempLast.trim();
-      middleName =
-          tempMiddle.trim().toUpperCase(); // Make middle name uppercase
+      middleName = tempMiddle.trim().toUpperCase();
       givenNames = tempGiven.trim();
+      dateOfBirth = tempDOB.trim();
 
       _lastNameController.text = lastName;
       _middleNameController.text = middleName;
       _givenNamesController.text = givenNames;
+      _dobController.text = dateOfBirth;
     });
   }
 
-  // Function to remove unwanted words or lines from the middle name
   String _filterMiddleName(String middleName) {
-    final unwantedTerms = [
-      'petsa ng kapanganakan',
-      'date of birth',
-      // Add any additional terms that need to be excluded here
-    ];
+    final unwantedTerms = ['petsa ng kapanganakan', 'date of birth'];
 
     for (var term in unwantedTerms) {
       middleName = middleName.replaceAll(
@@ -160,11 +178,37 @@ class _OCRScreenState extends State<OCRScreen> {
     return middleName;
   }
 
+  // Fix common OCR typos in month names
+  String _correctOCRNoise(String input) {
+    final corrections = {
+      'vJ%UARY': 'January',
+      'JANUARY': 'January',
+      'FEBRUARY': 'February',
+      'MARCH': 'March',
+      'APRIL': 'April',
+      'MAY': 'May',
+      'JUNE': 'June',
+      'JULY': 'July',
+      'AUGUST': 'August',
+      'SEPTEMBER': 'September',
+      'OCTOBER': 'October',
+      'NOVEMBER': 'November',
+      'DECEMBER': 'December',
+    };
+
+    corrections.forEach((wrong, right) {
+      input = input.replaceAll(RegExp(wrong, caseSensitive: false), right);
+    });
+
+    return input;
+  }
+
   @override
   void dispose() {
     _lastNameController.dispose();
     _middleNameController.dispose();
     _givenNamesController.dispose();
+    _dobController.dispose();
     super.dispose();
   }
 
@@ -202,6 +246,14 @@ class _OCRScreenState extends State<OCRScreen> {
                 controller: _givenNamesController,
                 decoration: const InputDecoration(
                   labelText: 'Given Names',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 10),
+              TextFormField(
+                controller: _dobController,
+                decoration: const InputDecoration(
+                  labelText: 'Date of Birth',
                   border: OutlineInputBorder(),
                 ),
               ),
